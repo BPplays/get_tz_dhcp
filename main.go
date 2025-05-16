@@ -35,6 +35,7 @@ func main() {
 
 	tzdbs := rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
 	for i := range len(tzdbs) {
+		fmt.Println(tzdbs[i].ToBytes())
 		str := string(tzdbs[i].ToBytes())
 		fmt.Println(str)
 	}
