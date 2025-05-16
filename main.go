@@ -54,17 +54,20 @@ func main() {
 			continue
 			// log.Fatalf("Solicit failed: %v", err)
 		}
-		fmt.Println(sol)
-		// Assert the interface to *dhcpv6.Message
+		if *debug {
+			fmt.Println(sol)
+		}
+
 		advMsg, ok := adv.(*dhcpv6.Message)
 		if !ok {
 			continue
 			// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
 		}
 
-		// 'adv' now comes from an actual DHCPv6 server and includes a ServerID.
 		req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
-		fmt.Println(req, rep)
+		if *debug {
+			fmt.Println(req, rep)
+		}
 
 		tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
 
