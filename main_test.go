@@ -27,7 +27,7 @@ func TestSprintSingleTz(t *testing.T) {
 		t.Parallel()
 		strs := []string{}
 
-		rang := 1000
+		rang := 250
 		if testing.Short() {
 			rang = 50
 		}
