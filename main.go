@@ -39,7 +39,7 @@ func sprintSingleTz(stringsl []string) string {
 		return ""
 	case len(stringsl) <= 1:
 		return stringsl[0]
-	case len(stringsl) >= 2001:
+	case len(stringsl) >= 1001:
 		return stringsl[0]
 	}
 
