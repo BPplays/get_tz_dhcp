@@ -31,10 +31,12 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 	return similarity
 }
 
+
 func reqFqdn(chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
 	c := client6.NewClient()
 
 	reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionFQDN)
+
 
 
 
@@ -50,22 +52,21 @@ func reqFqdn(chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
 		go func(iface net.Interface) {
 			defer wg.Done()
 
-			sol, adv, err := c.Solicit(iface.Name, reqTzdb)
+			// sol, adv, err := c.Solicit(iface.Name, reqTzdb)
+			// if err != nil {
+			// 	return
+			// 	// log.Fatalf("Solicit failed: %v", err)
+			// }
+
+			msg, err := dhcpv6.NewMessage(reqTzdb)
 			if err != nil {
 				return
-				// log.Fatalf("Solicit failed: %v", err)
 			}
-			if *debug {
-				fmt.Println(sol)
-			}
+			msg.MessageType = dhcpv6.MessageTypeInformationRequest
+			msg.AddOption(dhcpv6.OptInformationRefreshTime(1000 * time.Second))
 
-			advMsg, ok := adv.(*dhcpv6.Message)
-			if !ok {
-				return
-				// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
-			}
+			req, rep, err := c.Request(iface.Name, msg, reqTzdb)
 
-			req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
 			if *debug {
 				fmt.Println(req, rep)
 			}
