@@ -33,7 +33,6 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 
 func sprintSingleTz(stringsl []string) string {
 
-	fmt.Println(len(stringsl))
 	switch {
 	case len(stringsl) <= 0:
 		return ""
