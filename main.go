@@ -12,11 +12,56 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/client6"
 	"github.com/adrg/strutil"
+	"github.com/adrg/strutil/metrics"
 )
 
-func sprintSingleTz([]string) string {
+type similarity struct {
+	similarity float64
+	index int
+}
 
+func StringSimilarity(s1 string, s2 string) (similarity float64) {
+	sd := metrics.NewSorensenDice()
+	similarity = strutil.Similarity(s1, s2, sd)
+	return similarity
+}
 
+func sprintSingleTz(stringsl []string) string {
+
+	if len(stringsl) <= 1 {
+		return stringsl[0]
+	}
+
+	var wg sync.WaitGroup
+	sims := make(chan similarity, len(stringsl))
+
+	for i, _ := range stringsl {
+		wg.Add(1)
+		go func(strs []string, i int) {
+			defer wg.Done()
+			for i2, _ := range stringsl {
+				if i2 == i {
+					continue
+				}
+				sims <- similarity{similarity: StringSimilarity(stringsl[i], stringsl[i2]), index: i}
+			}
+		}(stringsl, i)
+	}
+
+	wg.Wait()
+	close(sims)
+
+	maxSim := similarity{similarity: -1.0, index: 0}
+	for sim := range sims {
+		if sim.similarity > maxSim.similarity {
+			maxSim = sim
+		}
+	}
+
+	if maxSim.similarity < -0.5 {
+		return stringsl[maxSim.index]
+	}
+	return stringsl[0]
 }
 
 func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
@@ -35,7 +80,8 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 		fmt.Println(strings.Join(tzdbsString, ","))
 
 	} else {
-		fmt.Println(string((*tzdbs)[0][0].ToBytes()))
+		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
+		fmt.Println(sprintSingleTz(tzdbsString))
 	}
 
 }
