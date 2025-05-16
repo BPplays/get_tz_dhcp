@@ -31,6 +31,9 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 	return similarity
 }
 
+// get the string most similer to all the others
+//
+// if you put in > 1000 strings it just returns [0]
 func sprintSingleTz(stringsl []string) string {
 
 	switch {
