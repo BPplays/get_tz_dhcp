@@ -31,6 +31,63 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 	return similarity
 }
 
+func reqTzdb(chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
+	c := client6.NewClient()
+
+	reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone)
+
+
+
+
+	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
+
+	var wg sync.WaitGroup
+
+	for _, iface := range chosen {
+		wg.Add(1)
+
+
+		go func(iface net.Interface) {
+			defer wg.Done()
+
+			sol, adv, err := c.Solicit(iface.Name, reqTzdb)
+			if err != nil {
+				return
+				// log.Fatalf("Solicit failed: %v", err)
+			}
+			if *debug {
+				fmt.Println(sol)
+			}
+
+			advMsg, ok := adv.(*dhcpv6.Message)
+			if !ok {
+				return
+				// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
+			}
+
+			req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
+			if *debug {
+				fmt.Println(req, rep)
+			}
+
+			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
+
+			tzdbChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
+
+		}(iface)
+	}
+
+	wg.Wait()
+	close(tzdbChan)
+
+	for tzdb := range tzdbChan {
+		tzdbs = append(tzdbs, tzdb)
+	}
+
+
+	return tzdbs
+}
+
 // get the string most similer to all the others
 //
 // if you put in > maxSize strings it just returns [0]
@@ -140,61 +197,17 @@ func main() {
     }
 
 
-	c := client6.NewClient()
-
-	reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone)
+	// reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionFQDN)
 	// reqTzdb := dhcpv6.OptRequestedOption(dhcpv6.OptionNewTZDBTimezone)
 	// fmt.Println(reqTzdb.String())
 
 
 	st := time.Now()
 
-	var tzdbs [][]dhcpv6.Option
+	tzdbs := reqTzdb(chosen)
 
-
-	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
-
-	var wg sync.WaitGroup
-
-	for _, iface := range chosen {
-		wg.Add(1)
-
-
-		go func(iface net.Interface) {
-			defer wg.Done()
-
-			sol, adv, err := c.Solicit(iface.Name, reqTzdb)
-			if err != nil {
-				return
-				// log.Fatalf("Solicit failed: %v", err)
-			}
-			if *debug {
-				fmt.Println(sol)
-			}
-
-			advMsg, ok := adv.(*dhcpv6.Message)
-			if !ok {
-				return
-				// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
-			}
-
-			req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
-			if *debug {
-				fmt.Println(req, rep)
-			}
-
-			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
-
-			tzdbChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
-
-		}(iface)
-	}
-
-	wg.Wait()
-	close(tzdbChan)
-
-	for tzdb := range tzdbChan {
-		tzdbs = append(tzdbs, tzdb)
+	if len(tzdbs) <= 0 {
+		log.Fatalln("no tzdbs")
 	}
 
 	if *debug {
