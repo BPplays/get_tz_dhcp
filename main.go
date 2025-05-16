@@ -49,12 +49,15 @@ func sprintSingleTz(stringsl []string) string {
 		wg.Add(1)
 		go func(strs []string, i int) {
 			defer wg.Done()
+
+			sim := similarity{similarity: 0, index: i}
 			for i2 := range stringsl {
 				if i2 == i {
 					continue
 				}
-				sims <- similarity{similarity: StringSimilarity(stringsl[i], stringsl[i2]), index: i}
+				sim = similarity{similarity: sim.similarity + StringSimilarity(stringsl[i], stringsl[i2]), index: i}
 			}
+			sims <- sim
 		}(stringsl, i)
 	}
 
@@ -64,14 +67,16 @@ func sprintSingleTz(stringsl []string) string {
 	maxSim := similarity{similarity: -1.0, index: 0}
 	for sim := range sims {
 		if *debug {
-			fmt.Println(sim.similarity)
+			fmt.Println(sim.similarity, stringsl[sim.index])
 		}
+		// fmt.Println(sim.similarity, stringsl[sim.index])
 		if sim.similarity > maxSim.similarity {
 			maxSim = sim
 		}
 	}
+	// fmt.Println(maxSim.similarity)
 
-	if maxSim.similarity < -0.5 {
+	if maxSim.similarity > -0.5 {
 		return stringsl[maxSim.index]
 	}
 	return stringsl[0]

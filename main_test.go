@@ -34,6 +34,9 @@ func TestSprintSingleTz(t *testing.T) {
 
 		i := 0
 		for len(strs) < rang {
+			if i == 0 {
+				strs = append(strs, "Asia/Tokyo")
+			}
 			if i % 2 == 0 {
 				strs = append(strs, "America/New_York")
 			} else if i % 3 == 0 {
