@@ -39,7 +39,7 @@ func main() {
 	// }
 	// fmt.Println(solicitMsg, advertiseMsg)
 
-	requestMsg, replyMsg, err := c.Request("eth0", advertiseMsg, reqTzdb)
+	requestMsg, replyMsg, err := c.Request("Ethernet", advertiseMsg, reqTzdb)
 	if err != nil {
 		log.Fatalf("Request failed: %v", err)
 	}
