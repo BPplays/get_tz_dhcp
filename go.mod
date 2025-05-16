@@ -1,0 +1,11 @@
+module github.com/BPplays/get_tz_dhcp
+
+go 1.24.3
+
+require (
+	github.com/insomniacslk/dhcp v0.0.0-20250417080101-5f8cf70e8c5f // indirect
+	github.com/josharian/native v1.1.0 // indirect
+	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+)
