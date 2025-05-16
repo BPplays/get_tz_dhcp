@@ -1,10 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
-	"flag"
+	"sync"
+	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/client6"
@@ -46,31 +48,58 @@ func main() {
 	// fmt.Println(reqTzdb.String())
 
 
+	st := time.Now()
 
 	var tzdbs [][]dhcpv6.Option
+
+
+	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
+
+	var wg sync.WaitGroup
+
 	for _, iface := range chosen {
-		sol, adv, err := c.Solicit(iface.Name, reqTzdb)
-		if err != nil {
-			continue
-			// log.Fatalf("Solicit failed: %v", err)
-		}
-		if *debug {
-			fmt.Println(sol)
-		}
+		wg.Add(1)
 
-		advMsg, ok := adv.(*dhcpv6.Message)
-		if !ok {
-			continue
-			// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
-		}
 
-		req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
-		if *debug {
-			fmt.Println(req, rep)
-		}
+		go func(iface net.Interface) {
+			defer wg.Done()
 
-		tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
+			sol, adv, err := c.Solicit(iface.Name, reqTzdb)
+			if err != nil {
+				return
+				// log.Fatalf("Solicit failed: %v", err)
+			}
+			if *debug {
+				fmt.Println(sol)
+			}
 
+			advMsg, ok := adv.(*dhcpv6.Message)
+			if !ok {
+				return
+				// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
+			}
+
+			req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
+			if *debug {
+				fmt.Println(req, rep)
+			}
+
+			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
+
+			tzdbChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
+
+		}(iface)
+	}
+
+	wg.Wait()
+	close(tzdbChan)
+
+	for tzdb := range tzdbChan {
+		tzdbs = append(tzdbs, tzdb)
+	}
+
+	if *debug {
+		log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
 	}
 
 
