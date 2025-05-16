@@ -11,23 +11,28 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/client6"
+	"github.com/adrg/strutil"
 )
 
-func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
+func sprintSingleTz([]string) string {
 
+
+}
+
+func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
+	var tzdbsString []string
+
+
+	for i, tzdb := range *tzdbs {
+		for i2 := range len(tzdb) {
+			str := string((*tzdbs)[i][i2].ToBytes())
+			tzdbsString = append(tzdbsString, str)
+		}
+	}
 
 	if *multi{
-		var tmp []string
 
-
-		for i, tzdb := range *tzdbs {
-			for i2 := range len(tzdb) {
-				str := string((*tzdbs)[i][i2].ToBytes())
-				tmp = append(tmp, str)
-			}
-		}
-
-		fmt.Println(strings.Join(tmp, ","))
+		fmt.Println(strings.Join(tzdbsString, ","))
 
 	} else {
 		fmt.Println(string((*tzdbs)[0][0].ToBytes()))
