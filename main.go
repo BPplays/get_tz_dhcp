@@ -31,6 +31,65 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 	return similarity
 }
 
+func reqFqdn(chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
+	c := client6.NewClient()
+
+	reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionFQDN)
+
+
+
+
+	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
+
+	var wg sync.WaitGroup
+
+	for _, iface := range chosen {
+		wg.Add(1)
+
+
+		go func(iface net.Interface) {
+			defer wg.Done()
+
+			sol, adv, err := c.Solicit(iface.Name, reqTzdb)
+			if err != nil {
+				return
+				// log.Fatalf("Solicit failed: %v", err)
+			}
+			if *debug {
+				fmt.Println(sol)
+			}
+
+			advMsg, ok := adv.(*dhcpv6.Message)
+			if !ok {
+				return
+				// log.Fatalf("unexpected type %T, want *dhcpv6.Message", adv)
+			}
+
+			req, rep, err := c.Request(iface.Name, advMsg, reqTzdb)
+			if *debug {
+				fmt.Println(req, rep)
+			}
+
+			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
+
+			// fmt.Println(string(rep.ToBytes()))
+			fmt.Println(rep.Summary())
+			tzdbChan <- rep.GetOption(dhcpv6.OptionFQDN)
+
+		}(iface)
+	}
+
+	wg.Wait()
+	close(tzdbChan)
+
+	for tzdb := range tzdbChan {
+		tzdbs = append(tzdbs, tzdb)
+	}
+
+
+	return tzdbs
+}
+
 func reqTzdb(chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
 	c := client6.NewClient()
 
@@ -169,6 +228,8 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 func main() {
 	debug = flag.Bool("debug", false, "debug")
 	multi := flag.Bool("multi", false, "print multiple tzs")
+	doTzdb := flag.Bool("doTzdb", false, "print tzdb")
+	doFqdn := flag.Bool("doFqdn", false, "print tzdb")
 	flag.Parse()
 
 
@@ -204,22 +265,45 @@ func main() {
 
 	st := time.Now()
 
-	tzdbs := reqTzdb(chosen)
+	if *doTzdb {
+		tzdbs := reqTzdb(chosen)
 
-	if len(tzdbs) <= 0 {
-		log.Fatalln("no tzdbs")
+		if len(tzdbs) <= 0 {
+			log.Fatalln("no tzdbs")
+		}
+
+		if *debug {
+			log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
+		}
+
+
+		if len(tzdbs) <= 0 {
+			log.Fatalln("no tzdbs")
+		}
+
+		printTz(&tzdbs, multi)
+
 	}
 
-	if *debug {
-		log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
+	if *doFqdn {
+		fqdns := reqFqdn(chosen)
+
+		if len(fqdns) <= 0 {
+			log.Fatalln("no fqdns")
+		}
+
+		if *debug {
+			log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
+		}
+
+
+		if len(fqdns) <= 0 {
+			log.Fatalln("no fqdns")
+		}
+
+		fmt.Println(fqdns)
+		// printTz(&fqdns, multi)
 	}
-
-
-	if len(tzdbs) <= 0 {
-		log.Fatalln("no tzdbs")
-	}
-
-	printTz(&tzdbs, multi)
 
 
 }
