@@ -15,6 +15,11 @@ import (
 	"github.com/adrg/strutil/metrics"
 )
 
+var (
+	debugVal bool = false
+	debug *bool = &debugVal
+)
+
 type similarity struct {
 	similarity float64
 	index int
@@ -28,18 +33,24 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 
 func sprintSingleTz(stringsl []string) string {
 
-	if len(stringsl) <= 1 {
+	fmt.Println(len(stringsl))
+	switch {
+	case len(stringsl) <= 0:
+		return ""
+	case len(stringsl) <= 1:
+		return stringsl[0]
+	case len(stringsl) >= 2001:
 		return stringsl[0]
 	}
 
 	var wg sync.WaitGroup
-	sims := make(chan similarity, len(stringsl))
+	sims := make(chan similarity, len(stringsl) * (len(stringsl)-1))
 
-	for i, _ := range stringsl {
+	for i := range stringsl {
 		wg.Add(1)
 		go func(strs []string, i int) {
 			defer wg.Done()
-			for i2, _ := range stringsl {
+			for i2 := range stringsl {
 				if i2 == i {
 					continue
 				}
@@ -53,6 +64,9 @@ func sprintSingleTz(stringsl []string) string {
 
 	maxSim := similarity{similarity: -1.0, index: 0}
 	for sim := range sims {
+		if *debug {
+			fmt.Println(sim.similarity)
+		}
 		if sim.similarity > maxSim.similarity {
 			maxSim = sim
 		}
@@ -87,7 +101,7 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 }
 
 func main() {
-	debug := flag.Bool("debug", false, "debug")
+	debug = flag.Bool("debug", false, "debug")
 	multi := flag.Bool("multi", false, "print multiple tzs")
 	flag.Parse()
 
