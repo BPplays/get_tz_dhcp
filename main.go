@@ -33,15 +33,17 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 
 // get the string most similer to all the others
 //
-// if you put in > 1000 strings it just returns [0]
-func sprintSingleTz(stringsl []string) string {
+// if you put in > maxSize strings it just returns [0]
+//
+// maxSize should probably be ~1000
+func sprintSingleTz(stringsl []string, maxSize int) string {
 
 	switch {
 	case len(stringsl) <= 0:
 		return ""
 	case len(stringsl) <= 1:
 		return stringsl[0]
-	case len(stringsl) >= 1001:
+	case len(stringsl) > maxSize && maxSize > -1:
 		return stringsl[0]
 	}
 
@@ -102,7 +104,7 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 
 	} else {
 		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
-		fmt.Println(sprintSingleTz(tzdbsString))
+		fmt.Println(sprintSingleTz(tzdbsString, 1000))
 	}
 
 }
