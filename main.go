@@ -131,18 +131,6 @@ func main() {
 		log.Fatalln("no tzdbs")
 	}
 
-	// for i, tzdb := range tzdbs {
-	// 	for i2 := range len(tzdb) {
-	// 		if *debug {
-	// 			fmt.Println(tzdbs[i][i2].ToBytes())
-	// 		}
-	// 		str := string(tzdbs[i][i2].ToBytes())
-	// 		fmt.Println(str)
-	// 	}
-	// }
-
-
-
 	printTz(&tzdbs, multi)
 
 
