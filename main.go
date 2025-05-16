@@ -14,6 +14,7 @@ import (
 
 func main() {
 	debug := flag.Bool("debug", false, "debug")
+	multi := flag.Bool("multi", false, "print multiple tzs")
 	flag.Parse()
 
 
@@ -115,6 +116,12 @@ func main() {
 			str := string(tzdbs[i][i2].ToBytes())
 			fmt.Println(str)
 		}
+	}
+
+	if *multi {
+
+	} else {
+		fmt.Println(string(tzdbs[0][0].ToBytes()))
 	}
 
 
