@@ -5,12 +5,35 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/client6"
 )
+
+func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
+
+
+	if *multi{
+		var tmp []string
+
+
+		for i, tzdb := range *tzdbs {
+			for i2 := range len(tzdb) {
+				str := string((*tzdbs)[i][i2].ToBytes())
+				tmp = append(tmp, str)
+			}
+		}
+
+		fmt.Println(strings.Join(tmp, ","))
+
+	} else {
+		fmt.Println(string((*tzdbs)[0][0].ToBytes()))
+	}
+
+}
 
 func main() {
 	debug := flag.Bool("debug", false, "debug")
@@ -108,22 +131,19 @@ func main() {
 		log.Fatalln("no tzdbs")
 	}
 
-	for i, tzdb := range tzdbs {
-		for i2 := range len(tzdb) {
-			if *debug {
-				fmt.Println(tzdbs[i][i2].ToBytes())
-			}
-			str := string(tzdbs[i][i2].ToBytes())
-			fmt.Println(str)
-		}
-	}
+	// for i, tzdb := range tzdbs {
+	// 	for i2 := range len(tzdb) {
+	// 		if *debug {
+	// 			fmt.Println(tzdbs[i][i2].ToBytes())
+	// 		}
+	// 		str := string(tzdbs[i][i2].ToBytes())
+	// 		fmt.Println(str)
+	// 	}
+	// }
 
-	if *multi {
 
-	} else {
-		fmt.Println(string(tzdbs[0][0].ToBytes()))
-	}
 
+	printTz(&tzdbs, multi)
 
 
 }
