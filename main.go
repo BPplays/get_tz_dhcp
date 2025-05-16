@@ -126,6 +126,7 @@ func main() {
         if iface.Flags&net.FlagLoopback != 0 {
             continue
         }
+
         chosen = append(chosen, iface)
 
 		if *debug {
