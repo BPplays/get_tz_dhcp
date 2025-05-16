@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"flag"
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/client6"
 )
 
 func main() {
+	debug := flag.Bool("debug", false, "debug")
+	flag.Parse()
 
 
     ifaces, err := net.Interfaces()
@@ -26,7 +29,10 @@ func main() {
             continue
         }
         chosen = append(chosen, iface)
-        fmt.Printf("→ using interface %q\n", chosen)
+
+		if *debug {
+			fmt.Printf("→ using interface %q\n", chosen)
+		}
     }
     if len(chosen) <= 0 {
         log.Fatal("no suitable interface found")
@@ -71,7 +77,9 @@ func main() {
 
 	for i, tzdb := range tzdbs {
 		for i2 := range len(tzdb) {
-			fmt.Println(tzdbs[i][i2].ToBytes())
+			if *debug {
+				fmt.Println(tzdbs[i][i2].ToBytes())
+			}
 			str := string(tzdbs[i][i2].ToBytes())
 			fmt.Println(str)
 		}
