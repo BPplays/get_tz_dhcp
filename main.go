@@ -35,7 +35,7 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 //
 // if you put in > maxSize strings it just returns [0]
 //
-// maxSize should probably be ~1000
+// maxSize should probably be ~250
 func sprintSingleTz(stringsl []string, maxSize int) string {
 
 	switch {
@@ -104,7 +104,7 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 
 	} else {
 		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
-		fmt.Println(sprintSingleTz(tzdbsString, 1000))
+		fmt.Println(sprintSingleTz(tzdbsString, 250))
 	}
 
 }
