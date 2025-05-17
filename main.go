@@ -189,9 +189,30 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 
 
 
+			mods := []dhcpv6.Modifier{}
 			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone, dhcpv6.OptionFQDN)
+
+			mods = append(mods, reqTzdb)
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6IdentifiedHomeNetworkInformation))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6UnrestrictedHomeNetworkInformation))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeNetworkPrefix))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeAgentAddress))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeAgentFQDN))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionV6PCPServer))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionV6Prefix64))
+
+			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionDNSRecursiveNameServer))
+
+
 			// fmt.Println("getreqopt")
-			adv, err := c.Solicit(ctx, reqTzdb)
+			adv, err := c.Solicit(ctx, mods...)
 			if err != nil {
 				if *debug {
 					fmt.Println(err)
