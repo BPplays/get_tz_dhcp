@@ -172,7 +172,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 			optRetry := nclient6.WithRetry(2)
 			// optDebug := nclient6.WithDebugLogger()
 
-			fmt.Println("starting")
+			// fmt.Println("starting")
 			c, err := nclient6.New(iface.Name, optTimeout, optRetry)
 			if err != nil {
 				if *debug {
@@ -184,7 +184,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 
 
 			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone, dhcpv6.OptionFQDN)
-			fmt.Println("getreqopt")
+			// fmt.Println("getreqopt")
 			adv, err := c.Solicit(ctx, reqTzdb)
 			if err != nil {
 				if *debug {
@@ -193,13 +193,13 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				return
 				// log.Fatalf("Solicit failed: %v", err)
 			}
-			fmt.Println("getsol")
+			// fmt.Println("getsol")
 
 			advReq, err := NewInfoRequestFromAdvertise(adv, reqTzdb)
 			if err != nil {
 				return
 			}
-			fmt.Println("getadvmsg")
+			// fmt.Println("getadvmsg")
 
 			addr := net.UDPAddr{IP: dhcpv6.AllDHCPServers, Port: dhcpv6.DefaultServerPort}
 			rep, err := c.SendAndRead(ctx, &addr, advReq, nil)
@@ -210,7 +210,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				return
 			}
 
-			fmt.Println("getrep")
+			// fmt.Println("getrep")
 
 			// c.SendAndRead()
 
