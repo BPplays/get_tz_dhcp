@@ -171,7 +171,7 @@ func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan 
 	*optChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
 }
 
-func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
+func reqTzdb(ctx context.Context, chosen []net.Interface, timeout time.Duration) (tzdbs [][]dhcpv6.Option) {
 	total := len(chosen)
 	tzdbChan := make(chan []dhcpv6.Option, total)
 
@@ -182,11 +182,11 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 	for _, iface := range chosen {
 		wg.Add(1)
 
-		go func(ctx context.Context, iface net.Interface) {
+		go func(ctx context.Context, iface net.Interface, timeout time.Duration) {
 			defer wg.Done()
 
-			makeReq(ctx, &tzdbChan, &summChan, iface, 450 * time.Millisecond, 3)
-		}(ctx, iface)
+			makeReq(ctx, &tzdbChan, &summChan, iface, timeout, 3)
+		}(ctx, iface, timeout)
 	}
 
 	wg.Wait()
@@ -323,26 +323,33 @@ func main() {
 	// fmt.Println(reqTzdb.String())
 
 
-	st := time.Now()
+	// st := time.Now()
 
 	if *doTzdb {
-		ctx, cancel := context.WithTimeout(context.Background(), 3000 * time.Second)
-		defer cancel()
+		var tzdbs [][]dhcpv6.Option
+		// fix not closing socket. can i fix it?
+		for _, t := range []time.Duration{400 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
+			st := time.Now()
+			ctx, cancel := context.WithTimeout(context.Background(), t)
+			defer cancel()
+			fmt.Println(t)
 
-		tzdbs := reqTzdb(ctx, chosen)
+			tzdbs = reqTzdb(ctx, chosen, t)
+
+			if len(tzdbs) > 0 {
+				break
+			}
+
+			if *debug {
+				log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
+			}
+			break
+		}
 
 		if len(tzdbs) <= 0 {
 			log.Fatalln("no tzdbs")
 		}
 
-		if *debug {
-			log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
-		}
-
-
-		if len(tzdbs) <= 0 {
-			log.Fatalln("no tzdbs")
-		}
 
 		printTz(&tzdbs, multi)
 
