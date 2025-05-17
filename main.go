@@ -333,9 +333,10 @@ func main() {
 			st := time.Now()
 			retries := 3
 
-			timeoutBuffer := 500 * time.Millisecond
+			timeoutBuffer := 100 * time.Millisecond
 
-			ctx, cancel := context.WithTimeout(context.Background(), (t + timeoutBuffer) * time.Duration(retries))
+			ctxTimeout := (t * time.Duration(retries)) + timeoutBuffer
+			ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 			defer cancel()
 			fmt.Println(t)
 
