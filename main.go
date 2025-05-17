@@ -16,6 +16,7 @@ import (
 	"github.com/adrg/strutil"
 	"github.com/adrg/strutil/metrics"
 	"github.com/insomniacslk/dhcp/dhcpv6"
+	"errors"
 	// "github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 )
@@ -111,6 +112,49 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 // }
 
 
+
+func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifier) (*dhcpv6.Message, error) {
+	if adv == nil {
+		return nil, errors.New("ADVERTISE cannot be nil")
+	}
+	if adv.MessageType != dhcpv6.MessageTypeAdvertise {
+		return nil, fmt.Errorf("The passed ADVERTISE must have ADVERTISE type set")
+	}
+	req, err := dhcpv6.NewMessage()
+	if err != nil {
+		return nil, err
+	}
+	req.MessageType = dhcpv6.MessageTypeInformationRequest
+	cid := adv.GetOneOption(dhcpv6.OptionClientID)
+	if cid == nil {
+		return nil, fmt.Errorf("Client ID cannot be nil in ADVERTISE when building REQUEST")
+	}
+	req.AddOption(cid)
+	sid := adv.GetOneOption(dhcpv6.OptionServerID)
+	if sid == nil {
+		return nil, fmt.Errorf("Server ID cannot be nil in ADVERTISE when building REQUEST")
+	}
+	req.AddOption(sid)
+	req.AddOption(dhcpv6.OptElapsedTime(0))
+	req.AddOption(dhcpv6.OptRequestedOption(
+		dhcpv6.OptionDNSRecursiveNameServer,
+		dhcpv6.OptionDomainSearchList,
+	))
+
+	// add OPTION_VENDOR_CLASS, only if present in the original request
+	// TODO implement OptionVendorClass
+	vClass := adv.GetOneOption(dhcpv6.OptionVendorClass)
+	if vClass != nil {
+		req.AddOption(vClass)
+	}
+
+	// apply modifiers
+	for _, mod := range modifiers {
+		mod(req)
+	}
+	return req, nil
+}
+
 func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
 	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
 
@@ -131,7 +175,8 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				return
 			}
 
-			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone)
+
+			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone, dhcpv6.OptionFQDN)
 			adv, err := c.Solicit(ctx, reqTzdb)
 			if err != nil {
 				if *debug {
@@ -141,12 +186,11 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				// log.Fatalf("Solicit failed: %v", err)
 			}
 
-			advReq, err := dhcpv6.NewRequestFromAdvertise(adv)
+			advReq, err := NewInfoRequestFromAdvertise(adv, reqTzdb)
 			if err != nil {
 				return
 			}
 
-			advReq.MessageType = dhcpv6.MessageTypeInformationRequest
 			addr := net.UDPAddr{IP: dhcpv6.AllDHCPServers, Port: dhcpv6.DefaultServerPort}
 			rep, err := c.SendAndRead(ctx, &addr, advReq, nil)
 			if err != nil {
