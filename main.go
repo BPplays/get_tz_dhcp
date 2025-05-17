@@ -16,7 +16,6 @@ import (
 	"github.com/adrg/strutil"
 	"github.com/adrg/strutil/metrics"
 	"github.com/insomniacslk/dhcp/dhcpv6"
-	"golang.org/x/sync/errgroup"
 	// "github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 )
@@ -116,12 +115,12 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
 
 	var wg sync.WaitGroup
-	g, ctx := errgroup.WithContext(ctx)
 
 	for _, iface := range chosen {
 		wg.Add(1)
 
-		g.Go(func() error {
+		g, ctx := errgroup.WithContext(ctx)
+		go func(ctx context.Context, iface net.Interface) {
 			defer wg.Done()
 
 
@@ -130,7 +129,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				if *debug {
 					fmt.Println(err)
 				}
-				return nil
+				return
 			}
 
 			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone)
@@ -139,13 +138,13 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				if *debug {
 					fmt.Println(err)
 				}
-				return nil
+				return
 				// log.Fatalf("Solicit failed: %v", err)
 			}
 
 			advReq, err := dhcpv6.NewRequestFromAdvertise(adv)
 			if err != nil {
-				return nil
+				return
 			}
 
 			advReq.MessageType = dhcpv6.MessageTypeInformationRequest
@@ -155,7 +154,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				if *debug {
 					fmt.Println(err)
 				}
-				return nil
+				return
 			}
 
 			// c.SendAndRead()
@@ -173,15 +172,11 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
 
 			tzdbChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
-			return nil
-		})
+
+		}(ctx, iface)
 	}
 
-	// wg.Wait()
-
-	if err := g.Wait(); err != nil {
-		return nil
-	}
+	wg.Wait()
 	close(tzdbChan)
 
 	for tzdb := range tzdbChan {
