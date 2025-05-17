@@ -328,7 +328,7 @@ func main() {
 	if *doTzdb {
 		var tzdbs [][]dhcpv6.Option
 		// fix not closing socket. can i fix it?
-		for _, t := range []time.Duration{1000 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
+		for _, t := range []time.Duration{1001 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
 
 			st := time.Now()
 			retries := 3
