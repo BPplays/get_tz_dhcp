@@ -185,7 +185,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 		go func(ctx context.Context, iface net.Interface) {
 			defer wg.Done()
 
-			makeReq(ctx, &tzdbChan, &summChan, iface, 250 * time.Millisecond, 4)
+			makeReq(ctx, &tzdbChan, &summChan, iface, 100 * time.Millisecond, 4)
 		}(ctx, iface)
 	}
 
