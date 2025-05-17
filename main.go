@@ -38,82 +38,6 @@ func StringSimilarity(s1 string, s2 string) (similarity float64) {
 	return similarity
 }
 
-
-// func reqFqdn(chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
-// 	c := client6.NewClient()
-//
-// 	reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionFQDN)
-//
-//
-//
-//
-//
-// 	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
-//
-// 	var wg sync.WaitGroup
-//
-// 	for _, iface := range chosen {
-// 		wg.Add(1)
-//
-//
-// 		go func(iface net.Interface) {
-// 			defer wg.Done()
-//
-// 			// sol, adv, err := c.Solicit(iface.Name, reqTzdb)
-// 			// if err != nil {
-// 			// 	return
-// 			// 	// log.Fatalf("Solicit failed: %v", err)
-// 			// }
-//
-// 			msg, err := dhcpv6.NewMessage(reqTzdb)
-// 			if err != nil {
-// 				return
-// 			}
-// 			msg.MessageType = dhcpv6.MessageTypeInformationRequest
-// 			msg.AddOption(dhcpv6.OptInformationRefreshTime(1000 * time.Second))
-// 			// 4. Serialize
-// 			b := msg.ToBytes()
-//
-// 			// 5. Send via UDP on port 547 to “ff02::1:2” (all-DHCP-servers multicast)
-// 			raw, err := ipv6.ListenPacket(net.InterfaceByName(ifaceName), &net.UDPAddr{
-// 				IP:   net.ParseIP("ff02::1:2"),
-// 				Port: dhcpv6.DefaultServerPort,
-// 			})
-// 			if err != nil {
-// 				return
-// 			}
-// 			defer raw.Close()
-//
-// 			_, err = raw.WriteTo(b, nil, &net.UDPAddr{IP: net.ParseIP("ff02::1:2"), Port: dhcpv6.DefaultServerPort})
-//
-// 			req, rep, err := c.Request(iface.Name, msg, reqTzdb)
-//
-// 			if *debug {
-// 				fmt.Println(req, rep)
-// 			}
-//
-// 			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
-//
-// 			// fmt.Println(string(rep.ToBytes()))
-// 			fmt.Println(rep.Summary())
-// 			tzdbChan <- rep.GetOption(dhcpv6.OptionFQDN)
-//
-// 		}(iface)
-// 	}
-//
-// 	wg.Wait()
-// 	close(tzdbChan)
-//
-// 	for tzdb := range tzdbChan {
-// 		tzdbs = append(tzdbs, tzdb)
-// 	}
-//
-//
-// 	return tzdbs
-// }
-
-
-
 func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifier) (*dhcpv6.Message, error) {
 	if adv == nil {
 		return nil, errors.New("ADVERTISE cannot be nil")
@@ -156,108 +80,117 @@ func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifi
 	return req, nil
 }
 
-func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
-	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
+func makeReq(ctx context.Context, wg *sync.WaitGroup, optChan *chan []dhcpv6.Option, summChan *chan string, iface net.Interface, retries int) {
+	defer wg.Done()
+	// defer func() { fmt.Println("done req"); wg.Done() }()
 
-	summChan := make(chan string, len(chosen))
+	optTimeout := nclient6.WithTimeout(1000 * time.Millisecond)
+	optRetry := nclient6.WithRetry(retries)
+
+	opts := []nclient6.ClientOpt{optTimeout, optRetry}
+	if *debug {
+		opts = append(opts, nclient6.WithDebugLogger())
+	}
+
+	// optDebug := nclient6.WithDebugLogger()
+
+	// fmt.Println("starting")
+	c, err := nclient6.New(iface.Name, opts...)
+	if err != nil {
+		if *debug {
+			fmt.Println(err)
+		}
+		return
+	}
+
+
+
+	mods := []dhcpv6.Modifier{}
+	reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone, dhcpv6.OptionFQDN)
+
+	mods = append(mods, reqTzdb)
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6IdentifiedHomeNetworkInformation))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6UnrestrictedHomeNetworkInformation))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeNetworkPrefix))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeAgentAddress))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeAgentFQDN))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionV6PCPServer))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionV6Prefix64))
+
+	mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionDNSRecursiveNameServer))
+
+
+	// fmt.Println("getreqopt")
+	adv, err := c.Solicit(ctx, mods...)
+	if err != nil {
+		if *debug {
+			fmt.Println(err)
+		}
+		return
+		// log.Fatalf("Solicit failed: %v", err)
+	}
+	// fmt.Println("getsol")
+
+	advReq, err := NewInfoRequestFromAdvertise(adv, reqTzdb)
+	if err != nil {
+		return
+	}
+	// fmt.Println("getadvmsg")
+
+	addr := net.UDPAddr{IP: dhcpv6.AllDHCPServers, Port: dhcpv6.DefaultServerPort}
+	rep, err := c.SendAndRead(ctx, &addr, advReq, nil)
+	if err != nil {
+		if *debug {
+			fmt.Println(err)
+		}
+		return
+	}
+
+	// fmt.Println("getrep")
+
+	// c.SendAndRead()
+
+	// rep, err := c.Request(ctx, adv, reqTzdb)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+
+	if *debug {
+		// fmt.Println(rep)
+		*summChan <- rep.Summary()
+	}
+
+	// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
+
+	*optChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
+}
+
+func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
+	retries := 10
+	total := len(chosen) * retries
+	tzdbChan := make(chan []dhcpv6.Option, total)
+
+	summChan := make(chan string, total)
 
 	var wg sync.WaitGroup
 
+	ti := 0
 	for _, iface := range chosen {
-		wg.Add(1)
+		for range retries {
+			wg.Add(1)
+			ti++
 
-		go func(ctx context.Context, iface net.Interface) {
-			defer wg.Done()
-			// defer func() { fmt.Println("done req"); wg.Done() }()
-
-			optTimeout := nclient6.WithTimeout(1000 * time.Millisecond)
-			optRetry := nclient6.WithRetry(2)
-
-			opts := []nclient6.ClientOpt{optTimeout, optRetry}
-			if *debug {
-				opts = append(opts, nclient6.WithDebugLogger())
-			}
-
-			// optDebug := nclient6.WithDebugLogger()
-
-			// fmt.Println("starting")
-			c, err := nclient6.New(iface.Name, opts...)
-			if err != nil {
-				if *debug {
-					fmt.Println(err)
-				}
-				return
-			}
-
-
-
-			mods := []dhcpv6.Modifier{}
-			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone, dhcpv6.OptionFQDN)
-
-			mods = append(mods, reqTzdb)
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6IdentifiedHomeNetworkInformation))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6UnrestrictedHomeNetworkInformation))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeNetworkPrefix))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeAgentAddress))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionMIPv6HomeAgentFQDN))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionV6PCPServer))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionV6Prefix64))
-
-			mods = append(mods, dhcpv6.WithRequestedOptions(dhcpv6.OptionDNSRecursiveNameServer))
-
-
-			// fmt.Println("getreqopt")
-			adv, err := c.Solicit(ctx, mods...)
-			if err != nil {
-				if *debug {
-					fmt.Println(err)
-				}
-				return
-				// log.Fatalf("Solicit failed: %v", err)
-			}
-			// fmt.Println("getsol")
-
-			advReq, err := NewInfoRequestFromAdvertise(adv, reqTzdb)
-			if err != nil {
-				return
-			}
-			// fmt.Println("getadvmsg")
-
-			addr := net.UDPAddr{IP: dhcpv6.AllDHCPServers, Port: dhcpv6.DefaultServerPort}
-			rep, err := c.SendAndRead(ctx, &addr, advReq, nil)
-			if err != nil {
-				if *debug {
-					fmt.Println(err)
-				}
-				return
-			}
-
-			// fmt.Println("getrep")
-
-			// c.SendAndRead()
-
-			// rep, err := c.Request(ctx, adv, reqTzdb)
-			// if err != nil {
-			// 	fmt.Println(err)
-			// }
-
-			if *debug {
-				// fmt.Println(rep)
-				summChan <- rep.Summary()
-			}
-
-			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
-
-			tzdbChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
-
-		}(ctx, iface)
+			go func(ctx context.Context, iface net.Interface, retries int) {
+				makeReq(ctx, &wg, &tzdbChan, &summChan, iface, 1)
+			}(ctx, iface, retries)
+		}
 	}
 
 	wg.Wait()
@@ -268,6 +201,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 		for summ := range summChan {
 			fmt.Println(summ)
 		}
+		fmt.Println(ti, total)
 	}
 
 	for tzdb := range tzdbChan {
@@ -351,6 +285,9 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 
 	} else {
 		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
+		if *debug {
+			fmt.Println(tzdbsString)
+		}
 		fmt.Println(sprintSingleTz(tzdbsString, 250))
 	}
 
