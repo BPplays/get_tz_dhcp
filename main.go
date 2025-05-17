@@ -119,7 +119,6 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 	for _, iface := range chosen {
 		wg.Add(1)
 
-		g, ctx := errgroup.WithContext(ctx)
 		go func(ctx context.Context, iface net.Interface) {
 			defer wg.Done()
 
