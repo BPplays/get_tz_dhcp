@@ -19,6 +19,7 @@ import (
 	"errors"
 	// "github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
+	// "github.com/insomniacslk/dhcp/dhcpv6/client6"
 )
 
 var (
@@ -164,10 +165,15 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 		wg.Add(1)
 
 		go func(ctx context.Context, iface net.Interface) {
-			defer wg.Done()
+			// defer wg.Done()
+			defer func() { fmt.Println("done req"); wg.Done() }()
 
+			optTimeout := nclient6.WithTimeout(1000 * time.Millisecond)
+			optRetry := nclient6.WithRetry(2)
+			// optDebug := nclient6.WithDebugLogger()
 
-			c, err := nclient6.New(iface.Name)
+			fmt.Println("starting")
+			c, err := nclient6.New(iface.Name, optTimeout, optRetry)
 			if err != nil {
 				if *debug {
 					fmt.Println(err)
@@ -176,7 +182,9 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 			}
 
 
+
 			reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionNewTZDBTimezone, dhcpv6.OptionFQDN)
+			fmt.Println("getreqopt")
 			adv, err := c.Solicit(ctx, reqTzdb)
 			if err != nil {
 				if *debug {
@@ -185,11 +193,13 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				return
 				// log.Fatalf("Solicit failed: %v", err)
 			}
+			fmt.Println("getsol")
 
 			advReq, err := NewInfoRequestFromAdvertise(adv, reqTzdb)
 			if err != nil {
 				return
 			}
+			fmt.Println("getadvmsg")
 
 			addr := net.UDPAddr{IP: dhcpv6.AllDHCPServers, Port: dhcpv6.DefaultServerPort}
 			rep, err := c.SendAndRead(ctx, &addr, advReq, nil)
@@ -199,6 +209,8 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 				}
 				return
 			}
+
+			fmt.Println("getrep")
 
 			// c.SendAndRead()
 
