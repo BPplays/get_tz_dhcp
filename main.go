@@ -171,7 +171,7 @@ func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan 
 	*optChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
 }
 
-func reqTzdb(ctx context.Context, chosen []net.Interface, timeout time.Duration) (tzdbs [][]dhcpv6.Option) {
+func reqTzdb(ctx context.Context, chosen []net.Interface, timeout time.Duration, retries int) (tzdbs [][]dhcpv6.Option) {
 	total := len(chosen)
 	tzdbChan := make(chan []dhcpv6.Option, total)
 
@@ -182,11 +182,11 @@ func reqTzdb(ctx context.Context, chosen []net.Interface, timeout time.Duration)
 	for _, iface := range chosen {
 		wg.Add(1)
 
-		go func(ctx context.Context, iface net.Interface, timeout time.Duration) {
+		go func(ctx context.Context, iface net.Interface, timeout time.Duration, retries int) {
 			defer wg.Done()
 
-			makeReq(ctx, &tzdbChan, &summChan, iface, timeout, 3)
-		}(ctx, iface, timeout)
+			makeReq(ctx, &tzdbChan, &summChan, iface, timeout, retries)
+		}(ctx, iface, timeout, retries)
 	}
 
 	wg.Wait()
@@ -328,20 +328,26 @@ func main() {
 	if *doTzdb {
 		var tzdbs [][]dhcpv6.Option
 		// fix not closing socket. can i fix it?
-		for _, t := range []time.Duration{400 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
+		for _, t := range []time.Duration{1000 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
+
 			st := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), t)
+			retries := 3
+
+			timeoutBuffer := 500 * time.Millisecond
+
+			ctx, cancel := context.WithTimeout(context.Background(), (t + timeoutBuffer) * time.Duration(retries))
 			defer cancel()
 			fmt.Println(t)
 
-			tzdbs = reqTzdb(ctx, chosen, t)
+			tzdbs = reqTzdb(ctx, chosen, t, retries)
 
-			if len(tzdbs) > 0 {
-				break
-			}
 
 			if *debug {
 				log.Printf("time of dhcpv6 req: %v\n", time.Since(st))
+			}
+
+			if len(tzdbs) > 0 {
+				break
 			}
 			break
 		}
