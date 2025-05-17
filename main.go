@@ -165,15 +165,21 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 		wg.Add(1)
 
 		go func(ctx context.Context, iface net.Interface) {
-			// defer wg.Done()
-			defer func() { fmt.Println("done req"); wg.Done() }()
+			defer wg.Done()
+			// defer func() { fmt.Println("done req"); wg.Done() }()
 
 			optTimeout := nclient6.WithTimeout(1000 * time.Millisecond)
 			optRetry := nclient6.WithRetry(2)
+
+			opts := []nclient6.ClientOpt{optTimeout, optRetry}
+			if *debug {
+				opts = append(opts, nclient6.WithDebugLogger())
+			}
+
 			// optDebug := nclient6.WithDebugLogger()
 
 			// fmt.Println("starting")
-			c, err := nclient6.New(iface.Name, optTimeout, optRetry)
+			c, err := nclient6.New(iface.Name, opts...)
 			if err != nil {
 				if *debug {
 					fmt.Println(err)
@@ -220,9 +226,9 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 			// }
 
 			if *debug {
-				fmt.Println(rep)
+				// fmt.Println(rep)
+				fmt.Println(rep.Summary())
 			}
-			fmt.Println(rep.Summary())
 
 			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
 
