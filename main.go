@@ -289,6 +289,7 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 
 func main() {
 	debug = flag.Bool("debug", false, "debug")
+	totalTime := flag.Bool("totalTime", false, "")
 	multi := flag.Bool("multi", false, "print multiple tzs")
 	doTzdb := flag.Bool("doTzdb", false, "print tzdb")
 	doFqdn := flag.Bool("doFqdn", false, "print tzdb")
@@ -325,12 +326,12 @@ func main() {
 	// fmt.Println(reqTzdb.String())
 
 
-	// st := time.Now()
+	st := time.Now()
 
 	if *doTzdb {
 		var tzdbs [][]dhcpv6.Option
 		// fix not closing socket. can i fix it?
-		for _, t := range []time.Duration{350 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
+		for _, t := range []time.Duration{650 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
 
 			st := time.Now()
 			retries := 3
@@ -340,7 +341,9 @@ func main() {
 			ctxTimeout := (t * time.Duration(retries)) + timeoutBuffer
 			ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 			defer cancel()
-			fmt.Println(t)
+			if *debug {
+				fmt.Println(t)
+			}
 
 			tzdbs = reqTzdb(ctx, chosen, t, retries)
 
@@ -362,6 +365,10 @@ func main() {
 
 		printTz(&tzdbs, multi)
 
+	}
+
+	if *totalTime || *debug {
+		fmt.Println(time.Since(st))
 	}
 
 	if *doFqdn {
