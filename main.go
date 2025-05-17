@@ -80,11 +80,10 @@ func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifi
 	return req, nil
 }
 
-func makeReq(ctx context.Context, wg *sync.WaitGroup, optChan *chan []dhcpv6.Option, summChan *chan string, iface net.Interface, retries int) {
-	defer wg.Done()
+func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan string, iface net.Interface, timeout time.Duration, retries int) {
 	// defer func() { fmt.Println("done req"); wg.Done() }()
 
-	optTimeout := nclient6.WithTimeout(1000 * time.Millisecond)
+	optTimeout := nclient6.WithTimeout(timeout)
 	optRetry := nclient6.WithRetry(retries)
 
 	opts := []nclient6.ClientOpt{optTimeout, optRetry}
@@ -173,24 +172,21 @@ func makeReq(ctx context.Context, wg *sync.WaitGroup, optChan *chan []dhcpv6.Opt
 }
 
 func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
-	retries := 10
-	total := len(chosen) * retries
+	total := len(chosen)
 	tzdbChan := make(chan []dhcpv6.Option, total)
 
 	summChan := make(chan string, total)
 
 	var wg sync.WaitGroup
 
-	ti := 0
 	for _, iface := range chosen {
-		for range retries {
-			wg.Add(1)
-			ti++
+		wg.Add(1)
 
-			go func(ctx context.Context, iface net.Interface, retries int) {
-				makeReq(ctx, &wg, &tzdbChan, &summChan, iface, 1)
-			}(ctx, iface, retries)
-		}
+		go func(ctx context.Context, iface net.Interface) {
+			defer wg.Done()
+
+			makeReq(ctx, &tzdbChan, &summChan, iface, 250 * time.Millisecond, 4)
+		}(ctx, iface)
 	}
 
 	wg.Wait()
@@ -201,7 +197,6 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 		for summ := range summChan {
 			fmt.Println(summ)
 		}
-		fmt.Println(ti, total)
 	}
 
 	for tzdb := range tzdbChan {
@@ -285,9 +280,6 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 
 	} else {
 		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
-		if *debug {
-			fmt.Println(tzdbsString)
-		}
 		fmt.Println(sprintSingleTz(tzdbsString, 250))
 	}
 
