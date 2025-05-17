@@ -159,6 +159,8 @@ func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifi
 func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Option) {
 	tzdbChan := make(chan []dhcpv6.Option, len(chosen))
 
+	summChan := make(chan string, len(chosen))
+
 	var wg sync.WaitGroup
 
 	for _, iface := range chosen {
@@ -248,7 +250,7 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 
 			if *debug {
 				// fmt.Println(rep)
-				fmt.Println(rep.Summary())
+				summChan <- rep.Summary()
 			}
 
 			// tzdbs = append(tzdbs, rep.GetOption(dhcpv6.OptionNewTZDBTimezone))
@@ -260,6 +262,13 @@ func reqTzdb(ctx context.Context, chosen []net.Interface) (tzdbs [][]dhcpv6.Opti
 
 	wg.Wait()
 	close(tzdbChan)
+	close(summChan)
+
+	if *debug {
+		for summ := range summChan {
+			fmt.Println(summ)
+		}
+	}
 
 	for tzdb := range tzdbChan {
 		tzdbs = append(tzdbs, tzdb)
