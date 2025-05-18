@@ -326,12 +326,15 @@ func main() {
 	// fmt.Println(reqTzdb.String())
 
 
+
+	timeouts := []time.Duration{650 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond}
+
 	st := time.Now()
 
 	if *doTzdb {
 		var tzdbs [][]dhcpv6.Option
 		// fix not closing socket. can i fix it?
-		for _, t := range []time.Duration{650 * time.Millisecond, 1000 * time.Millisecond, 3000 * time.Millisecond} {
+		for _, t := range  timeouts {
 
 			st := time.Now()
 			retries := 3
