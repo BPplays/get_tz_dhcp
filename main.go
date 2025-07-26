@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -13,14 +14,19 @@ import (
 	// "golang.org/x/net/ipv6"
 
 	// "context"
+	"errors"
+
 	"github.com/adrg/strutil"
 	"github.com/adrg/strutil/metrics"
 	"github.com/insomniacslk/dhcp/dhcpv6"
-	"errors"
+
 	// "github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 	// "github.com/insomniacslk/dhcp/dhcpv6/client6"
+
+	dbus "github.com/godbus/dbus/v5"
 )
+
 
 var (
 	debugVal bool = false
@@ -80,6 +86,51 @@ func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifi
 	return req, nil
 }
 
+func setTZLinux(zone string) error {
+    conn, err := dbus.SystemBus()
+    if err != nil {
+        return err
+    }
+    obj := conn.Object("org.freedesktop.timedate1", "/org/freedesktop/timedate1")
+    // signature "sb": string (TZ name), boolean (fix RTC)
+    return obj.Call("org.freedesktop.timedate1.SetTimezone", 0, zone, false).Err
+}
+
+func setTZ(zone string) error {
+	switch runtime.GOOS {
+	case "linuxs":
+		return setTZLinux(zone)
+
+	default:
+		return fmt.Errorf("error setting timezones on %v is an %w", runtime.GOOS, errors.ErrUnsupported)
+	}
+}
+
+func NewIPv6UDPConn(ctx context.Context, iface string, port int) (net.PacketConn, error) {
+	ip, err := dhcpv6.GetLinkLocalAddr(iface)
+	if err != nil {
+		return nil, err
+	}
+
+	return net.ListenUDP("udp6", &net.UDPAddr{
+		IP:   ip,
+		Port: port,
+		Zone: iface,
+	})
+}
+func newNclient6(ctx context.Context, iface string, port int, opts ...nclient6.ClientOpt) (*nclient6.Client, error) {
+	c, err := NewIPv6UDPConn(ctx, iface, port)
+	if err != nil {
+		return nil, err
+	}
+
+	i, err := net.InterfaceByName(iface)
+	if err != nil {
+		return nil, err
+	}
+	return nclient6.NewWithConn(c, i.HardwareAddr, opts...)
+}
+
 func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan string, iface net.Interface, timeout time.Duration, retries int) {
 	// defer func() { fmt.Println("done req"); wg.Done() }()
 
@@ -94,7 +145,7 @@ func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan 
 	// optDebug := nclient6.WithDebugLogger()
 
 	// fmt.Println("starting")
-	c, err := nclient6.New(iface.Name, opts...)
+	c, err := newNclient6(ctx, iface.Name, dhcpv6.DefaultClientPort, opts...)
 	if err != nil {
 		if *debug {
 			fmt.Println(err)
@@ -265,7 +316,7 @@ func sprintSingleTz(stringsl []string, maxSize int) string {
 	return stringsl[0]
 }
 
-func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
+func sprintTz(tzdbs *[][]dhcpv6.Option, multi *bool) string {
 	var tzdbsString []string
 
 
@@ -277,12 +328,9 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 	}
 
 	if *multi{
-
-		fmt.Println(strings.Join(tzdbsString, ","))
-
+		return strings.Join(tzdbsString, ",")
 	} else {
-		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
-		fmt.Println(sprintSingleTz(tzdbsString, 250))
+		return sprintSingleTz(tzdbsString, 250)
 	}
 
 }
@@ -291,8 +339,12 @@ func main() {
 	debug = flag.Bool("debug", false, "debug")
 	totalTime := flag.Bool("totalTime", false, "")
 	multi := flag.Bool("multi", false, "print multiple tzs")
+	quiet := flag.Bool("q", false, "don't print tzs")
 	doTzdb := flag.Bool("doTzdb", false, "print tzdb")
 	doFqdn := flag.Bool("doFqdn", false, "print tzdb")
+
+	setSysTZ := flag.Bool("setSysTZ", false, "sets the system timezone")
+
 	flag.Parse()
 
 
@@ -366,7 +418,21 @@ func main() {
 		}
 
 
-		printTz(&tzdbs, multi)
+		tzS := sprintTz(&tzdbs, multi)
+		if !*quiet {
+			fmt.Println(tzS)
+		}
+
+		if *setSysTZ {
+			if *multi {
+				log.Fatalln("setting tz and multi are unsupported")
+			}
+			err := setTZ(tzS)
+			if err != nil {
+				fmt.Printf("couldn't set timezone %v", err)
+			}
+
+		}
 
 	}
 
