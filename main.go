@@ -174,8 +174,13 @@ func prepareInterfaces(
 		if newAddress {
 			ip, err := newLinkLocalAddress(iface)
 			if err != nil {
-				cleanupTemporaryAddresses()
-				return nil, err
+				if *debug {
+					fmt.Printf(
+						"→ error adding temp address: %v\n",
+						err,
+					)
+				}
+				continue
 			}
 			entry.sourceIP = ip
 		}
@@ -584,7 +589,7 @@ func run() (err error) {
 	}
 
 	if *doFqdn {
-		fmt.Println("fdhs")
+		fmt.Println("todo: implement later")
 	}
 
 	// if *doFqdn {
