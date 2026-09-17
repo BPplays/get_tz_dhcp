@@ -1,6 +1,6 @@
 module github.com/BPplays/get_tz_dhcp
 
-go 1.24.3
+go 1.26.0
 
 require (
 	github.com/adrg/strutil v0.3.1
@@ -12,7 +12,9 @@ require (
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
+	github.com/vishvananda/netlink v1.3.1 // indirect
+	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )

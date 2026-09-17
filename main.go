@@ -2,34 +2,183 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
-	// "golang.org/x/net/ipv6"
-
-	// "context"
 	"github.com/adrg/strutil"
 	"github.com/adrg/strutil/metrics"
 	"github.com/insomniacslk/dhcp/dhcpv6"
-	"errors"
-	// "github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
-	// "github.com/insomniacslk/dhcp/dhcpv6/client6"
+	"github.com/vishvananda/netlink"
 )
 
-var (
-	debugVal bool = false
-	debug *bool = &debugVal
+const (
+	// Linux include/uapi/linux/if_addr.h
+	rtScopeLink       = 253 // Linux RT_SCOPE_LINK
+	ifaFNODAD         = 0x02
+	ifaFNOPREFIXROUTE = 0x200
 )
 
 type similarity struct {
 	similarity float64
 	index int
+}
+
+type dhcpInterface struct {
+	iface    net.Interface
+	sourceIP net.IP
+}
+
+type temporaryAddress struct {
+	link netlink.Link
+	addr *netlink.Addr
+}
+
+var (
+	debugVal bool  = false
+	debug    *bool = &debugVal
+
+	tempAddrMu sync.Mutex
+	tempAddrs  []temporaryAddress
+)
+
+func newLinkLocalAddress(iface net.Interface) (net.IP, error) {
+	link, err := netlink.LinkByIndex(iface.Index)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get link %q: %w",
+			iface.Name,
+			err,
+		)
+	}
+
+	// Generate a random 64-bit interface ID.
+	var iid [8]byte
+	if _, err := rand.Read(iid[:]); err != nil {
+		return nil, fmt.Errorf(
+			"generate link-local IID for %q: %w",
+			iface.Name,
+			err,
+		)
+	}
+
+	ip := make(net.IP, net.IPv6len)
+	ip[0] = 0xfe
+	ip[1] = 0x80
+	copy(ip[8:], iid[:])
+
+	addr := &netlink.Addr{
+		IPNet: &net.IPNet{
+			IP:   ip,
+			Mask: net.CIDRMask(64, 128),
+		},
+
+		// Linux RT_SCOPE_LINK.
+		Scope: rtScopeLink,
+
+		// Skip DAD and don't create another fe80::/64 route.
+		Flags: ifaFNODAD | ifaFNOPREFIXROUTE,
+
+		// Deprecated: don't use this address for ordinary
+		// connections/source selection.
+		PreferedLft: 0,
+
+		// Keep it alive until we explicitly delete it.
+		ValidLft: math.MaxUint32,
+	}
+
+	if err := netlink.AddrAdd(link, addr); err != nil {
+		return nil, fmt.Errorf(
+			"add temporary link-local %s to %q: %w",
+			ip,
+			iface.Name,
+			err,
+		)
+	}
+
+	tempAddrMu.Lock()
+	tempAddrs = append(tempAddrs, temporaryAddress{
+		link: link,
+		addr: addr,
+	})
+	tempAddrMu.Unlock()
+
+	if *debug {
+		fmt.Printf(
+			"→ temporary link-local %s on %s\n",
+			ip,
+			iface.Name,
+		)
+	}
+
+	return ip, nil
+}
+
+func cleanupTemporaryAddresses() {
+	tempAddrMu.Lock()
+	addrs := tempAddrs
+	tempAddrs = nil
+	tempAddrMu.Unlock()
+
+	// Reverse order is convenient if this ever gets expanded.
+	for i := len(addrs) - 1; i >= 0; i-- {
+		entry := addrs[i]
+
+		if err := netlink.AddrDel(entry.link, entry.addr); err != nil {
+			// E.g. interface disappeared before we got here.
+			if *debug {
+				fmt.Printf(
+					"warning: remove temporary address %s from %s: %v\n",
+					entry.addr.IP,
+					entry.link.Attrs().Name,
+					err,
+				)
+			}
+			continue
+		}
+
+		if *debug {
+			fmt.Printf(
+				"→ removed temporary link-local %s from %s\n",
+				entry.addr.IP,
+				entry.link.Attrs().Name,
+			)
+		}
+	}
+}
+
+func prepareInterfaces(
+	chosen []net.Interface,
+	newAddress bool,
+) ([]dhcpInterface, error) {
+	result := make([]dhcpInterface, 0, len(chosen))
+
+	for _, iface := range chosen {
+		entry := dhcpInterface{
+			iface: iface,
+		}
+
+		if newAddress {
+			ip, err := newLinkLocalAddress(iface)
+			if err != nil {
+				cleanupTemporaryAddresses()
+				return nil, err
+			}
+			entry.sourceIP = ip
+		}
+
+		result = append(result, entry)
+	}
+
+	return result, nil
 }
 
 func StringSimilarity(s1 string, s2 string) (similarity float64) {
@@ -80,8 +229,15 @@ func NewInfoRequestFromAdvertise(adv *dhcpv6.Message, modifiers ...dhcpv6.Modifi
 	return req, nil
 }
 
-func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan string, iface net.Interface, timeout time.Duration, retries int) {
-	// defer func() { fmt.Println("done req"); wg.Done() }()
+func makeReq(
+	ctx context.Context,
+	optChan *chan []dhcpv6.Option,
+	summChan *chan string,
+	dhcpIf dhcpInterface,
+	timeout time.Duration,
+	retries int,
+) {
+	iface := dhcpIf.iface
 
 	optTimeout := nclient6.WithTimeout(timeout)
 	optRetry := nclient6.WithRetry(retries)
@@ -91,18 +247,45 @@ func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan 
 		opts = append(opts, nclient6.WithDebugLogger())
 	}
 
-	// optDebug := nclient6.WithDebugLogger()
+	var (
+		c   *nclient6.Client
+		err error
+	)
 
-	// fmt.Println("starting")
-	c, err := nclient6.New(iface.Name, opts...)
+	if dhcpIf.sourceIP != nil {
+		// Explicitly bind UDP/546 to the temporary link-local.
+		conn, connErr := net.ListenUDP("udp6", &net.UDPAddr{
+			IP:   dhcpIf.sourceIP,
+			Port: dhcpv6.DefaultClientPort,
+			Zone: iface.Name,
+		})
+		if connErr != nil {
+			if *debug {
+				fmt.Printf(
+					"[%s] bind %s:546 failed: %v\n",
+					iface.Name,
+					dhcpIf.sourceIP,
+					connErr,
+				)
+			}
+			return
+		}
+
+		c, err = nclient6.NewWithConn(conn, iface.HardwareAddr, opts...)
+		if err != nil {
+			conn.Close()
+		}
+	} else {
+		c, err = nclient6.New(iface.Name, opts...)
+	}
+
 	if err != nil {
 		if *debug {
-			fmt.Println(err)
+			fmt.Printf("[%s] DHCPv6 client creation failed: %v\n", iface.Name, err)
 		}
 		return
 	}
 	defer c.Close()
-
 
 
 
@@ -173,22 +356,33 @@ func makeReq(ctx context.Context, optChan *chan []dhcpv6.Option, summChan *chan 
 	*optChan <- rep.GetOption(dhcpv6.OptionNewTZDBTimezone)
 }
 
-func reqTzdb(ctx context.Context, chosen []net.Interface, timeout time.Duration, retries int) (tzdbs [][]dhcpv6.Option) {
+func reqTzdb(
+	ctx context.Context,
+	chosen []dhcpInterface,
+	timeout time.Duration,
+	retries int,
+) (tzdbs [][]dhcpv6.Option) {
 	total := len(chosen)
 	tzdbChan := make(chan []dhcpv6.Option, total)
-
 	summChan := make(chan string, total)
 
 	var wg sync.WaitGroup
 
-	for _, iface := range chosen {
+	for _, dhcpIf := range chosen {
 		wg.Add(1)
 
-		go func(ctx context.Context, iface net.Interface, timeout time.Duration, retries int) {
+		go func(dhcpIf dhcpInterface) {
 			defer wg.Done()
 
-			makeReq(ctx, &tzdbChan, &summChan, iface, timeout, retries)
-		}(ctx, iface, timeout, retries)
+			makeReq(
+				ctx,
+				&tzdbChan,
+				&summChan,
+				dhcpIf,
+				timeout,
+				retries,
+			)
+		}(dhcpIf)
 	}
 
 	wg.Wait()
@@ -204,7 +398,6 @@ func reqTzdb(ctx context.Context, chosen []net.Interface, timeout time.Duration,
 	for tzdb := range tzdbChan {
 		tzdbs = append(tzdbs, tzdb)
 	}
-
 
 	return tzdbs
 }
@@ -287,18 +480,24 @@ func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
 
 }
 
-func main() {
+func run() (err error) {
 	debug = flag.Bool("debug", false, "debug")
 	totalTime := flag.Bool("totalTime", false, "")
 	multi := flag.Bool("multi", false, "print multiple tzs")
 	doTzdb := flag.Bool("doTzdb", false, "print tzdb")
 	doFqdn := flag.Bool("doFqdn", false, "print tzdb")
+	newAddress := flag.Bool(
+		"newAddress",
+		false,
+		"create and explicitly bind temporary link-local addresses",
+		)
+
 	flag.Parse()
 
 
     ifaces, err := net.Interfaces()
     if err != nil {
-        log.Fatalf("failed to list interfaces: %v", err)
+		return errors.New("failed to list interfaces: %v")
     }
 
     var chosen []net.Interface
@@ -317,8 +516,12 @@ func main() {
 		}
     }
     if len(chosen) <= 0 {
-        log.Fatal("no suitable interface found")
+		return errors.New("no suitable interface found")
     }
+	prepared, err := prepareInterfaces(chosen, *newAddress)
+	if err != nil {
+		return err
+	}
 
 
 	// reqTzdb := dhcpv6.WithRequestedOptions(dhcpv6.OptionFQDN)
@@ -348,7 +551,7 @@ func main() {
 				fmt.Println(t)
 			}
 
-			tzdbs = reqTzdb(ctx, chosen, t, retries)
+			tzdbs = reqTzdb(ctx, prepared, t, retries)
 
 
 			if *debug {
@@ -362,7 +565,7 @@ func main() {
 		}
 
 		if len(tzdbs) <= 0 {
-			log.Fatalln("no tzdbs")
+			return errors.New("no tzdbs")
 		}
 
 
@@ -402,5 +605,12 @@ func main() {
 	// }
 
 
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Printf("error: %v", err)
+	}
 }
 
