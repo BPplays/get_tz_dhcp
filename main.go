@@ -14,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/adrg/strutil"
 	"github.com/adrg/strutil/metrics"
@@ -612,6 +615,15 @@ func run() (err error) {
 }
 
 func main() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		cleanupTemporaryAddresses()
+		os.Exit(130)
+	}()
+
 	if err := run(); err != nil {
 		log.Printf("error: %v", err)
 	}
