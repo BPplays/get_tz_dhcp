@@ -494,6 +494,7 @@ func run() (err error) {
 
 	flag.Parse()
 
+	defer cleanupTemporaryAddresses()
 
     ifaces, err := net.Interfaces()
     if err != nil {
