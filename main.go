@@ -1,4 +1,6 @@
 package main
+// build with:
+// $env:GOOS = 'linux'; $env:GOARCH = 'amd64'; go build -o C:\Users\suzuko\dev\installers\arch\main\bin\amd64; $env:GOOS = 'linux'; $env:GOARCH = 'arm64'; go build -o C:\Users\suzuko\dev\installers\arch\main\bin\arm64
 
 import (
 	"context"
