@@ -469,23 +469,23 @@ func sprintSingleTz(stringsl []string, maxSize int) string {
 }
 
 func printTz(tzdbs *[][]dhcpv6.Option, multi *bool) {
-	var tzdbsString []string
+	var tzdbsStrings []string
 
 
 	for i, tzdb := range *tzdbs {
 		for i2 := range len(tzdb) {
 			str := string((*tzdbs)[i][i2].ToBytes())
-			tzdbsString = append(tzdbsString, str)
+			tzdbsStrings = append(tzdbsStrings, str)
 		}
 	}
 
 	if *multi{
 
-		fmt.Println(strings.Join(tzdbsString, ","))
+		fmt.Println(strings.Join(tzdbsStrings, ","))
 
 	} else {
 		// fmt.Println(string((*tzdbs)[0][0].ToBytes()))
-		fmt.Println(sprintSingleTz(tzdbsString, 250))
+		fmt.Println(sprintSingleTz(tzdbsStrings, 250))
 	}
 
 }
